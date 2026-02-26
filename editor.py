@@ -15,7 +15,7 @@ class DocumentModifier(ABC):
         self.doc = doc
 
     @abstractmethod
-    def apply(self) -> list:
+    def apply(self) -> list[tuple[str, str | int]]:
         """Executes the modification and returns a list of action logs."""
         pass
 
@@ -41,46 +41,42 @@ class StyleImporter(DocumentModifier):
             
             if type(source_style) == Style:
                 self.doc.insert_style(source_style)
-                return [(f"Import {self.family}: {self.style_name}", "Success")]
+                return [(f"Import {self.family} style: {self.style_name}", "Success")]
             
-            return [(f"Import {self.family}: {self.style_name}", "Not found in source")]
+            return [(f"Import {self.family} style: {self.style_name}", "Not found in source")]
         except Exception as e:
-            return [(f"Import {self.family}: {self.style_name}", f"Error: {str(e)}")]
+            return [(f"Import {self.family} style: {self.style_name}", f"Error: {str(e)}")]
 
 class RegexStyler(DocumentModifier):
     """
     Applies an EXISTING style to text matching a regex pattern.
     Does not create or define styles; only applies them by name.
     """
-    def __init__(self, doc: Document, rules: list):
+    def __init__(self, doc: Document, style_name:str, regex: str):
         super().__init__(doc)
-        self.rules = rules
+        self.style_name = style_name
+        self.regex = regex
 
     def apply(self) -> list:
         """Applies named styles to matching regex groups."""
-        results = []
         body = self.doc.body
+        match_count = 0
         
-        for rule in self.rules:
-            match_count = 0
-            style_name = rule['style_name']
-            regex = rule['pattern']
-            
-            # Apply style to all matching paragraphs
-            for para in body.get_paragraphs(content=regex):
+        # Apply style to all matching paragraphs
+        for para in body.get_paragraphs(content=self.regex):
+            # Check whether a text style
+            if self.doc.get_style(family='text', name_or_element=self.style_name):
+                # Then use odfdo's set_span to appliy style_name to matching pattern
+                spans = para.set_span(self.style_name, regex=self.regex)
+                match_count += len(spans)
+            else:
+                # Else, format the whole paragraph 
                 # Clear paragraph styles
                 remove_tree(para, Span)
-                # Check whether a text style
-                if self.doc.get_style(family='text', name_or_element=style_name):
-                    # Then use odfdo's set_span to appliy style_name to matching pattern
-                    match_count += len(para.set_span(style_name, regex=regex))
-                else:
-                    # Else, format the whole paragraph 
-                    para.style = style_name
-                    match_count += 1
+                para.style = self.style_name
+                match_count += 1
                 
-            results.append((f"Applied '{style_name}'", match_count))
-        return results
+        return [(f"Applied '{self.style_name}'", match_count)]
 
 # =============================================================================
 # PROCESSOR ENGINE
@@ -108,7 +104,6 @@ class BatchProcessor:
             
             if self.dry_run:
                 print(f"[DRY RUN] Would process: {path.name}")
-                continue
 
             doc = Document(file_path)
             print(f"\nProcessing: {path.name}")
@@ -117,22 +112,24 @@ class BatchProcessor:
                 modifier = mod_class(doc, **kwargs)
                 logs = modifier.apply()
                 for label, info in logs:
-                    print(f"  {label} -> {info}")
+                    # print(f"  {label} -> {info}")
                     if isinstance(info, int):
                         self.totals[label] = self.totals.get(label, 0) + info
+                    else:
+                        self.totals[label] = info
+            
+            if not self.dry_run:
+                doc.save(str(output_path))
 
-            doc.save(str(output_path))
-        
-        if not self.dry_run:
             self._print_summary()
 
     def _print_summary(self):
-        print("\n" + "="*56)
-        print(f"{'MODIFICATION':<40} | {'TOTAL MATCHES'}")
-        print("-" * 56)
-        for label, count in self.totals.items():
-            print(f"{label:<40} | {count}")
-        print("="*56)
+        print("\n" + "="*65)
+        print(f"{'MODIFICATION':<55} | {'RESULT'}")
+        print("-" * 65)
+        for label, info in self.totals.items():
+            print(f"{label:<55} | {info}")
+        print("="*65)
 
 # =============================================================================
 # MAIN ENTRY POINT
@@ -156,17 +153,22 @@ def main():
 
     processor = BatchProcessor(args.pattern, dry_run=args.dry_run)
 
-    for mod_cfg in config_data.get('modifications', []):
-        m_type = mod_cfg.get('type')
-        if m_type == 'import_style':
-            processor.add_modifier_config(
-                StyleImporter, 
-                style_name=mod_cfg['style_name'], 
-                family=mod_cfg.get('family', 'paragraph'),
-                source_file=mod_cfg['source_file']
-            )
-        elif m_type == 'regex_span_styler':
-            processor.add_modifier_config(RegexStyler, rules=mod_cfg['rules'])
+    for mod in config_data.get('modifications', []):
+        if mod['type'] == 'import_style':
+            for rule in mod['rules']:
+                processor.add_modifier_config(
+                    StyleImporter, 
+                    style_name=rule['style_name'], 
+                    family=rule['family'],
+                    source_file=rule['source_file']
+                )
+        elif mod['type'] == 'regex_span_styler':
+            for rule in mod['rules']:
+                processor.add_modifier_config(
+                    RegexStyler, 
+                    style_name=rule['style_name'],
+                    regex=rule['pattern']
+                )
 
     processor.run(output_suffix=args.suffix)
 

@@ -42,21 +42,24 @@ Create a `rules.json` to map your patterns to your styles.
   "modifications": [
     {
       "type": "import_style",
-      "style_name": "Standard",
-      "family": "paragraph",
-      "source_file": "template_reference.odt"
-    },
-    {
-      "type": "import_style",
-      "style_name": "HighlightStyle",
-      "family": "text",
-      "source_file": "template_reference.odt"
+      "rules": [
+        {
+          "style_name": "Standard",
+          "family": "paragraph",
+          "source_file": "template_reference.odt"
+        },
+        {
+          "style_name": "HighlightStyle",
+          "family": "text",
+          "source_file": "template_reference.odt"
+        }
+      ]
     },
     {
       "type": "regex_span_styler",
       "rules": [
         {
-          "pattern": "\\+\\+ IMPORTANT: (.*)",
+          "pattern": "\\+IMPORTANT: (.*)",
           "style_name": "AlertStyle"
         }
       ]
