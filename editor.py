@@ -2,7 +2,7 @@ import glob
 import json
 import argparse
 from pathlib import Path
-from odfdo import Document, Style
+from odfdo import Document, Style, Span, remove_tree
 from abc import ABC, abstractmethod
 
 # =============================================================================
@@ -68,9 +68,11 @@ class RegexStyler(DocumentModifier):
             
             # Apply style to all matching paragraphs
             for para in body.get_paragraphs(content=regex):
+                # Clear paragraph styles
+                remove_tree(para, Span)
                 # Check whether a text style
                 if self.doc.get_style(family='text', name_or_element=style_name):
-                    # Then use odfdo's set_span to appliy style_name to capturing group 1
+                    # Then use odfdo's set_span to appliy style_name to matching pattern
                     match_count += len(para.set_span(style_name, regex=regex))
                 else:
                     # Else, format the whole paragraph 
