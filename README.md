@@ -73,7 +73,7 @@ Create a `rules.json` to map your patterns to your styles.
 ### 3. Run the Batch
 
 ```bash
-python odt_editor.py "invoices/*.odt" --config rules.json --suffix "_PROCESSED"
+python styler.py "invoices/*.odt" --config rules.json --suffix "_PROCESSED"
 ```
 
 ## 💻 Developer Guide
