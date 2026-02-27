@@ -1,6 +1,7 @@
 import glob
 import json
 import argparse
+import re
 from pathlib import Path
 from odfdo import Document, Style, Span, remove_tree
 from abc import ABC, abstractmethod
@@ -67,6 +68,11 @@ class RegexStyler(DocumentModifier):
             # Check whether a text style
             if self.doc.get_style(family='text', name_or_element=self.style_name):
                 # Then use odfdo's set_span to appliy style_name to matching pattern
+                try:
+                    group1 = re.search(self.regex, para.text_recursive).group(1)
+                    self.regex = group1
+                except IndexError:
+                    pass
                 spans = para.set_span(self.style_name, regex=self.regex)
                 match_count += len(spans)
             else:
