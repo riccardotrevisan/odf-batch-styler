@@ -29,7 +29,8 @@ uv sync
 ## Usage
 
 ```bash
-uv run styler.py "docs/*.odt"                         # uses ./rules.json
+uv run styler.py "docs/*.odt"                         # uses rules.json next to styler.py
+uv run styler.py a.odt "docs/*.odt"                   # several files and/or globs
 uv run styler.py "docs/*.odt" --config my_rules.json
 uv run styler.py "docs/*.odt" --dry-run               # preview, writes nothing
 uv run styler.py "docs/*.odt" --suffix "_PROCESSED"   # custom output suffix
@@ -37,8 +38,8 @@ uv run styler.py "docs/*.odt" --suffix "_PROCESSED"   # custom output suffix
 
 | Option | Default | Description |
 |---|---|---|
-| `pattern` | (required) | File glob pattern. Quote it so the shell doesn't expand it. |
-| `--config` | `rules.json` | Path to the JSON rules file. |
+| `file` ... | (required) | One or more `.odt` paths or glob patterns. Quote globs so the shell doesn't expand them. Non-`.odt` matches are skipped. |
+| `--config` | `rules.json` next to `styler.py` | Path to the JSON rules file. Relative `source_file` entries are resolved against this file's folder, so the tool works from any directory. |
 | `--dry-run` | off | Run all rules in memory and report results, but save nothing. |
 | `--suffix` | `_EDITED` | Appended to the output file name. |
 
@@ -47,6 +48,21 @@ Behaviour worth knowing:
 * Output is written next to the input: `report.odt` becomes `report_EDITED.odt`.
 * Files whose name already ends with the suffix are skipped, so re-running on a folder doesn't process previous output.
 * Each file is processed independently; the summary counts are not carried over between files.
+
+## Using from Windows (WSL)
+
+The tool runs inside WSL, but you can launch it from Windows on files that live on `C:\`.
+
+* [styler.bat](styler.bat) forwards its arguments to [styler-wsl.sh](styler-wsl.sh), which converts Windows paths (`C:\...`, `\\server\...`) to WSL paths and runs the script.
+* **Drag & drop**: drop one or more `.odt` files onto `styler.bat` (or onto a shortcut to it). The window stays open until you press a key.
+* **Command line** (cmd/PowerShell), with any extra arguments:
+  ```bat
+  styler.bat --dry-run "C:\Users\me\Documents\report.odt"
+  styler.bat --suffix _PROCESSED "C:\docs\a.odt" "C:\docs\b.odt"
+  ```
+* Output goes next to each input file, as usual.
+
+Notes: `styler.bat` assumes the repo is at `/home/trevi/odf-batch-styler` in your default WSL distro (edit the path inside it otherwise). Set `STYLER_NO_PAUSE=1` to skip the final pause when scripting. Dropping very many files at once can hit the Windows command-line length limit.
 
 ## Configuration
 

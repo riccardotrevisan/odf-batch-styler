@@ -107,10 +107,26 @@ class RegexStyler(DocumentModifier):
 
 class BatchProcessor:
     """Manages the batch modification of multiple ODF files."""
-    def __init__(self, file_pattern: str, dry_run: bool = False):
-        self.files = glob.glob(file_pattern)
+    def __init__(self, patterns: list[str], dry_run: bool = False):
+        self.files = self._expand(patterns)
         self.dry_run = dry_run
         self.modifier_configs = []
+
+    @staticmethod
+    def _expand(patterns: list[str]) -> list[str]:
+        """Expands paths/globs into a de-duplicated list of .odt files (order kept)."""
+        files: dict[str, None] = {}
+        for pattern in patterns:
+            # An existing path wins over glob syntax (names may contain '[' or '*')
+            matches = [pattern] if Path(pattern).exists() else glob.glob(pattern)
+            if not matches:
+                print(f"Warning: no match for '{pattern}'")
+            for match in matches:
+                if Path(match).suffix.lower() != ".odt":
+                    print(f"Skipping non-.odt file: {match}")
+                    continue
+                files[match] = None
+        return list(files)
 
     def add_modifier_config(self, modifier_class: type, **kwargs):
         self.modifier_configs.append((modifier_class, kwargs))
@@ -166,8 +182,10 @@ class BatchProcessor:
 
 def main():
     parser = argparse.ArgumentParser(description="Template-Based ODF Styler")
-    parser.add_argument("pattern", help="File glob pattern (e.g. '*.odt')")
-    parser.add_argument("--config", default="rules.json", help="Path to JSON config")
+    parser.add_argument("files", nargs="+", metavar="file",
+                        help="One or more .odt paths or glob patterns (e.g. '*.odt')")
+    parser.add_argument("--config", default=str(Path(__file__).with_name("rules.json")),
+                        help="Path to JSON config (default: rules.json next to styler.py)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--suffix", default="_EDITED")
     
@@ -180,7 +198,10 @@ def main():
         print(f"Error: Could not load {args.config} ({e})")
         return
 
-    processor = BatchProcessor(args.pattern, dry_run=args.dry_run)
+    processor = BatchProcessor(args.files, dry_run=args.dry_run)
+
+    # Relative source files are resolved against the config's folder, not the CWD
+    config_dir = Path(args.config).resolve().parent
 
     for mod in config_data.get('modifications', []):
         if mod['type'] == 'import_style':
@@ -189,7 +210,7 @@ def main():
                     StyleImporter, 
                     style_name=rule['style_name'], 
                     family=rule['family'],
-                    source_file=rule['source_file']
+                    source_file=str(config_dir / rule['source_file'])
                 )
         elif mod['type'] == 'regex_styler':
             for rule in mod['rules']:
