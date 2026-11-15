@@ -1,2 +1,0 @@
-# Library for OpenDocument Format (ODF) manipulation
-odfdo>=3.0.0

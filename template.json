@@ -4,23 +4,27 @@
       "type": "import_style",
       "rules": [
         {
-          "style_name": "Standard",
-          "family": "paragraph",
-          "source_file": "template_reference.odt"
+          "style_name": "Critical",
+          "family": "text",
+          "source_file": "styleref.odt"
         },
         {
-          "style_name": "HighlightStyle",
-          "family": "text",
-          "source_file": "template_reference.odt"
+          "style_name": "Heading_Custom",
+          "family": "paragraph",
+          "source_file": "styleref.odt"
         }
       ]
     },
     {
-      "type": "regex_span_styler",
+      "type": "regex_styler",
       "rules": [
         {
           "pattern": "\\+IMPORTANT: (.*)",
-          "style_name": "AlertStyle"
+          "style_name": "Critical"
+        },
+        {
+          "pattern": "^Chapter \\d+",
+          "style_name": "Heading_Custom"
         }
       ]
     }

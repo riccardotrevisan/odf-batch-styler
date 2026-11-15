@@ -59,30 +59,47 @@ class RegexStyler(DocumentModifier):
         self.regex = regex
 
     def apply(self) -> list:
-        """Applies named styles to matching regex groups."""
-        body = self.doc.body
+        """Resolves the style kind, then delegates to the matching handler."""
+        label = f"Applied '{self.style_name}'"
+
+        if self.doc.get_style(family='text', name_or_element=self.style_name):
+            count = self._apply_text_style()
+        elif self.doc.get_style(family='paragraph', name_or_element=self.style_name):
+            count = self._apply_paragraph_style()
+        else:
+            return [(label, self._handle_unknown_style())]
+
+        return [(label, count)]
+
+    def _apply_text_style(self) -> int:
+        """Applies a text style to the matching text (or capture group 1) via spans."""
         match_count = 0
-        
-        # Apply style to all matching paragraphs
-        for para in body.get_paragraphs(content=self.regex):
-            # Check whether a text style
-            if self.doc.get_style(family='text', name_or_element=self.style_name):
-                # Then use odfdo's set_span to appliy style_name to matching pattern
+        for para in self.doc.body.get_paragraphs(content=self.regex):
+            # Local pattern so the rule's regex isn't overwritten for later paragraphs
+            pattern = self.regex
+            match = re.search(self.regex, para.text_recursive)
+            if match:
                 try:
-                    group1 = re.search(self.regex, para.text_recursive).group(1)
-                    self.regex = group1
+                    pattern = re.escape(match.group(1))
                 except IndexError:
                     pass
-                spans = para.set_span(self.style_name, regex=self.regex)
-                match_count += len(spans)
-            else:
-                # Else, format the whole paragraph 
-                # Clear paragraph styles
-                remove_tree(para, Span)
-                para.style = self.style_name
-                match_count += 1
-                
-        return [(f"Applied '{self.style_name}'", match_count)]
+            spans = para.set_span(self.style_name, regex=pattern)
+            match_count += len(spans)
+        return match_count
+
+    def _apply_paragraph_style(self) -> int:
+        """Applies a paragraph style to every paragraph matching the regex."""
+        match_count = 0
+        for para in self.doc.body.get_paragraphs(content=self.regex):
+            # Clear existing spans so the paragraph style applies cleanly
+            remove_tree(para, Span)
+            para.style = self.style_name
+            match_count += 1
+        return match_count
+
+    def _handle_unknown_style(self) -> str:
+        """Style exists neither as text nor paragraph style: modify nothing."""
+        return "Skipped: style not found in document"
 
 # =============================================================================
 # PROCESSOR ENGINE
@@ -94,7 +111,6 @@ class BatchProcessor:
         self.files = glob.glob(file_pattern)
         self.dry_run = dry_run
         self.modifier_configs = []
-        self.totals = {}
 
     def add_modifier_config(self, modifier_class: type, **kwargs):
         self.modifier_configs.append((modifier_class, kwargs))
@@ -106,34 +122,41 @@ class BatchProcessor:
 
         for file_path in self.files:
             path = Path(file_path)
+            if output_suffix and path.stem.endswith(output_suffix):
+                print(f"Skipping already-processed file: {path.name}")
+                continue
             output_path = path.parent / f"{path.stem}{output_suffix}{path.suffix}"
             
-            if self.dry_run:
-                print(f"[DRY RUN] Would process: {path.name}")
-
             doc = Document(file_path)
-            print(f"\nProcessing: {path.name}")
-            
+            if self.dry_run:
+                print(f"\n[DRY RUN] Would process: {path.name} -> {output_path.name}")
+            else:
+                print(f"\nProcessing: {path.name}")
+
+            # Counts are per file: start from scratch for every document
+            totals = {}
             for mod_class, kwargs in self.modifier_configs:
                 modifier = mod_class(doc, **kwargs)
                 logs = modifier.apply()
                 for label, info in logs:
-                    # print(f"  {label} -> {info}")
+                    # Per-file result (in dry run this is what would change)
+                    print(f"  {label} -> {info}")
                     if isinstance(info, int):
-                        self.totals[label] = self.totals.get(label, 0) + info
+                        totals[label] = totals.get(label, 0) + info
                     else:
-                        self.totals[label] = info
+                        totals[label] = info
             
             if not self.dry_run:
                 doc.save(str(output_path))
 
-            self._print_summary()
+            self._print_summary(totals)
 
-    def _print_summary(self):
+    @staticmethod
+    def _print_summary(totals: dict):
         print("\n" + "="*65)
         print(f"{'MODIFICATION':<55} | {'RESULT'}")
         print("-" * 65)
-        for label, info in self.totals.items():
+        for label, info in totals.items():
             print(f"{label:<55} | {info}")
         print("="*65)
 
@@ -168,7 +191,7 @@ def main():
                     family=rule['family'],
                     source_file=rule['source_file']
                 )
-        elif mod['type'] == 'regex_span_styler':
+        elif mod['type'] == 'regex_styler':
             for rule in mod['rules']:
                 processor.add_modifier_config(
                     RegexStyler, 
